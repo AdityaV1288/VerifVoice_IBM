@@ -19,7 +19,8 @@ __pycache__/
 *.flac
 *.ogg
 data/raw/
-models/
+models/*
+!models/semantic_classifier.json
 *.log
 .DS_Store
 Thumbs.db
