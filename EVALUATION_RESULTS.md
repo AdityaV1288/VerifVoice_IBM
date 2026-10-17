@@ -40,6 +40,24 @@
 - **False positives: 0**
 - **False negatives: 0**
 
+## 2.5 Semantic layer (learned classifier, rules + TF-IDF blend)
+
+The rule engine alone misses *reworded* coercion (fixture T19 scores 0.0). A learned TF-IDF + logistic-regression
+classifier, blended `C = 0.6·rules + 0.4·semantic`, closes that gap:
+
+| Case | rules only | blended | result |
+|---|---|---|---|
+| Paraphrased coercion (T19) | 0.00 | **0.34** | caught ("warn") |
+| Paraphrased threat | 0.00 | **0.37** | caught |
+| Paraphrased secrecy + pay | 0.00 | **0.57** | caught |
+| Benign family | 0.00 | 0.05 | untouched |
+| Benign legit-bank (negated) | 0.10 | 0.05 | untouched |
+| Benign split-bill | 0.20 | 0.23 | untouched |
+
+- Semantic checks: **6/6 pass** (3 paraphrased coercive ≥ 0.30, 3 benign < 0.30).
+- Safety: a purely-semantic hit (rules=0, semantic=1.0) tops out at `C=0.4`, so it can **warn but never pause**.
+- Runs on LinuxONE s390x (pure-Python inference; no scikit-learn wheel needed).
+
 ## 3. Edge cases (all pass)
 
 | Input | Behaviour |

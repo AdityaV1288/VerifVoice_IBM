@@ -14,6 +14,7 @@ __pycache__/
 *.key
 *.crt
 *.wav
+!samples/*.wav
 *.mp3
 *.m4a
 *.flac
