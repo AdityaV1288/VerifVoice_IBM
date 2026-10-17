@@ -1,44 +1,42 @@
-"""pipeline.py — combined VerifVoice analysis (Person 1 + Person 2).
+"""pipeline.py — combined VerifVoice analysis (Person 1 + Person 2 + semantic layer).
 
-This is the INTEGRATION layer that connects the two signal modules:
+Signal modules:
+  * `semantic_model`         -> rule-based coercion score + reason codes (C_rules)
+  * `semantic_classifier`    -> learned coercion score (C_semantic, TF-IDF+logreg)
+  * `audio_authenticity`     -> spoof score (S)
 
-  * Person 2 `semantic_model`      -> coercion_score + reason_codes (C)
-  * Person 1 `audio_authenticity`  -> authenticity_score / spoof (S)
-
-The combined result is what Person 3's `/analyze` endpoint returns, and what
-Person 4's fusion consumes:  R = 0.5*C + 0.3*S + 0.2*N.
-
-P4's fusion + payment policy live in `risk_engine.py` / `bank_simulator.py`
-(not here). This module only guarantees the two signals arrive together,
-correctly labelled, and that a missing spoof model never breaks the demo.
+Coercion is a blend:  C = 0.6 * C_rules + 0.4 * C_semantic   (renormalizes onto
+the rules when the learned model is unavailable). P4's fusion then does:
+R = 0.5*C + 0.3*S + 0.2*N. A purely-semantic hit (rules=0, semantic=1.0) reaches
+C=0.4 at most, so it can "warn" but never "pause" a payment on its own.
 """
 
 import uuid
 
+import semantic_classifier
 import semantic_model
 from audio_authenticity import analyze_audio
 
+RULES_WEIGHT = 0.6
+SEMANTIC_WEIGHT = 0.4
+
 
 def analyze_call(source: str, input_type: str = "text", lang: str = "en") -> dict:
-    """Run BOTH signal modules and return a unified, JSON-ready result.
-
-    * input_type == "text"  -> coercion only (no audio for the spoof model).
-    * input_type == "audio" -> coercion (transcribes via faster-whisper) AND
-      audio authenticity (WAV).
-
-    The spoof side is allowed to be `model_unavailable` (Person 1's honest
-    default) — that is surfaced as status, not as a crash.
-    """
+    """Run all signal modules and return a unified, JSON-ready result."""
     result = {
         "request_id": str(uuid.uuid4()),
         "input_type": input_type,
         "lang": lang,
-        # --- Person 2: coercion (always available) ---
+        # --- Person 2: rule-based coercion ---
         "coercion_score": None,
         "coercion_status": None,
         "reason_codes": [],
         "signals": {},
-        # --- Person 1: audio authenticity (audio only) ---
+        # --- semantic layer: learned coercion ---
+        "semantic_score": None,
+        "semantic_status": None,
+        "semantic_model": None,
+        # --- Person 1: audio authenticity ---
         "spoof_score": None,
         "spoof_status": None,
         "spoof_classification": None,
@@ -48,14 +46,41 @@ def analyze_call(source: str, input_type: str = "text", lang: str = "en") -> dic
         "spoof_warnings": [],
     }
 
-    # Person 2 — coercion (transcribes internally when input_type == "audio").
-    coercion = semantic_model.analyze(source, input_type=input_type, lang=lang)
-    result["coercion_score"] = coercion["coercion_score"]
-    result["coercion_status"] = coercion["status"]
-    result["reason_codes"] = coercion["reason_codes"]
-    result["signals"] = coercion["signals"]
+    # 1) Resolve the transcript text (transcribe if audio).
+    text = semantic_model.transcribe(source) if input_type == "audio" else source
 
-    # Person 1 — audio authenticity (only meaningful for a real audio file).
+    # 2) Run the two coercion signals on the text.
+    if text:
+        rules = semantic_model.analyze_transcript(text, lang=lang)
+        sem = semantic_classifier.classify(text, lang=lang)
+    else:
+        # Transcription failed -> abstain (weak signal, never "fraud").
+        rules = {"coercion_score": 0.0, "reason_codes": [], "signals": {},
+                 "status": "insufficient_text", "lang": lang}
+        sem = {"semantic_score": None, "reason_codes": [], "status": "insufficient_text"}
+
+    result["coercion_status"] = rules["status"]
+    result["signals"] = rules["signals"]
+    result["semantic_score"] = sem["semantic_score"]
+    result["semantic_status"] = sem["status"]
+    result["semantic_model"] = sem.get("model_name")
+
+    # 3) Blend coercion: 0.7 rules + 0.3 semantic (renormalize if semantic absent).
+    if rules["status"] == "analyzed":
+        if sem["semantic_score"] is not None:
+            c = RULES_WEIGHT * rules["coercion_score"] + SEMANTIC_WEIGHT * sem["semantic_score"]
+        else:
+            c = rules["coercion_score"]  # learned model unavailable -> rules alone
+    else:
+        c = rules["coercion_score"]  # abstention -> keep 0.0
+    result["coercion_score"] = round(min(1.0, c), 4)
+
+    # 4) Merge reason codes (dedupe, preserve order).
+    result["reason_codes"] = list(dict.fromkeys(
+        rules.get("reason_codes", []) + sem.get("reason_codes", [])
+    ))
+
+    # 5) Person 1 — audio authenticity (audio only; independent of transcription).
     if input_type == "audio":
         try:
             audio = analyze_audio(source)
@@ -75,12 +100,8 @@ def analyze_call(source: str, input_type: str = "text", lang: str = "en") -> dic
 
 
 # --------------------------------------------------------------------------- #
-# Reference only — Person 4 owns fusion + policy. Kept here so the combined
-# output is self-documenting about where the risk score comes from.
-#
+# Reference only — Person 4 owns fusion + policy.
 #   R = 0.5 * coercion_score + 0.3 * spoof_score + 0.2 * new_beneficiary
-#
-# When spoof_score is None (model unavailable), P4 should degrade gracefully
-# (e.g. renormalize onto the coercion signal, or treat S as unknown) rather than
-# fabricate a number.
+# When spoof_score is None (model unavailable), P4 degrades gracefully
+# (renormalize onto coercion + flag SPOOF_UNAVAILABLE).
 # --------------------------------------------------------------------------- #

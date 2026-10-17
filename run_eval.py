@@ -125,6 +125,34 @@ def save_results(rows):
     print(f"\nSaved results -> {out}")
 
 
+def run_semantic_checks():
+    """Verify the rule + learned-classifier blend on paraphrase/negation cases.
+
+    Paraphrased coercion (no trigger words) must now reach >= 0.30, while
+    benign/negated text must stay < 0.30.
+    """
+    import pipeline
+    print("\n--- Semantic layer checks (rules + TF-IDF classifier blend) ---")
+    cases = [
+        ("paraphrased coercion (T19)", "I need you to move some money to a different account for me. It has to happen fast, and I would rather you did not mention it to anyone just yet.", True),
+        ("paraphrased threat", "Your service will be suspended unless you clear the outstanding amount this minute.", True),
+        ("paraphrased secrecy+pay", "I would like you to keep this private and settle the balance right away.", True),
+        ("benign family", "Hi beta, how are you? How was school today? Did you have lunch?", False),
+        ("benign legit bank", "This is your banks security team. We will never ask for your OTP or PIN. Call the number on your card.", False),
+        ("benign split bill", "That meal came to twelve hundred, send me your half whenever, no rush.", False),
+    ]
+    passed = failed = 0
+    for name, text, is_coercive in cases:
+        r = pipeline.analyze_call(text)
+        score = r["coercion_score"]
+        ok = (score >= 0.30) if is_coercive else (score < 0.30)
+        print(f"[{'PASS' if ok else 'FAIL'}] {name}: coercion={score} semantic={r['semantic_score']}")
+        passed += ok
+        failed += (not ok)
+    print(f"semantic checks: {passed} passed, {failed} failed")
+    return failed == 0
+
+
 if __name__ == "__main__":
     data = json.load(open(FIXTURES, encoding="utf-8"))
     rows = run_fixtures(data["fixtures"])
@@ -132,4 +160,5 @@ if __name__ == "__main__":
     run_edge_cases()
     check_no_persistence()
     check_stability(data["fixtures"])
+    run_semantic_checks()
     save_results(rows)

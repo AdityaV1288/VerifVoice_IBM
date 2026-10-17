@@ -53,6 +53,10 @@ class AnalyzeResponse(BaseModel):
     reason_codes: list[str]
     signals: dict
     lang: str
+    # --- semantic layer (learned coercion) ---
+    semantic_score: float | None = None
+    semantic_status: str | None = None
+    semantic_model: str | None = None
     # --- Person 1 fields (live, via pipeline) ---
     spoof_score: float | None = None
     spoof_status: str | None = None
@@ -160,6 +164,9 @@ def _run_analyze(source: str, input_type: str, lang: str) -> AnalyzeResponse:
         reason_codes=result["reason_codes"],
         signals=result["signals"],
         lang=result["lang"],
+        semantic_score=result["semantic_score"],
+        semantic_status=result["semantic_status"],
+        semantic_model=result["semantic_model"],
         spoof_score=result["spoof_score"],
         spoof_status=result["spoof_status"],
         spoof_classification=result["spoof_classification"],
