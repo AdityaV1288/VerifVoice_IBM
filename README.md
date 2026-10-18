@@ -25,6 +25,7 @@ speech is never treated as proof of fraud, and the user retains a safe override.
 | `semantic_tests.py` | Person 2 | Smoke tests (6 core behaviours) |
 | `run_eval.py` | Person 2 | Formal evaluation (23 fixtures + semantic checks + stability) |
 | `vm_test.py` / `vm_evidence.py` / `vm_semantic_test.py` | Person 3 | LinuxONE deployment smoke / evidence scripts |
+| `frontend/index.html` | Frontend | Mobile coercion-risk overlay simulator + LinuxONE analyst dashboard |
 
 ## Setup
 
@@ -40,7 +41,9 @@ See `ENVIRONMENT.md` for the full setup guide.
 ```powershell
 python semantic_tests.py    # 6 smoke tests
 python run_eval.py          # 23-fixture eval + semantic-layer checks + stability
-python demo.py              # end-to-end: golden scam -> PAUSE, AAC user -> OBSERVE
+python smoke_test.py        # end-to-end API + risk engine smoke test
+python demo.py              # golden scam -> PAUSE, AAC user -> OBSERVE
+Start-Process "frontend\index.html"  # interactive overlay simulator & dashboard
 ```
 
 ## Status
