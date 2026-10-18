@@ -28,8 +28,8 @@ from pydantic import BaseModel, Field
 
 import semantic_model  # Person 2's module
 import pipeline        # Person 1 + Person 2 integration layer
-import risk_engine     # risk fusion (fallback until P4 delivers)
-import token_store     # in-memory risk tokens
+import risk_adapter    # risk fusion (Person 4's verifvoice_risk, wired via adapter)
+import token_store     # in-memory risk tokens (the single token store)
 from audio_authenticity import AudioAnalysisService, DetectorConfig as AudioDetectorConfig
 
 # --------------------------------------------------------------------------- #
@@ -199,7 +199,7 @@ def payment_decision(req: PaymentDecisionRequest):
     if token is None:
         raise HTTPException(status_code=400, detail="token expired or unknown")
 
-    result = risk_engine.decide(
+    result = risk_adapter.decide(
         coercion_score=token["coercion_score"],
         spoof_score=token["spoof_score"],
         new_beneficiary=req.new_beneficiary,

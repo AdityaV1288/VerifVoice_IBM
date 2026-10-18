@@ -1,0 +1,4 @@
+# Runtime: Python >= 3.9 standard library only. Nothing to install.
+#
+# Optional, only if you use RedisTokenStore (shared tokens across API workers):
+# redis>=4.5

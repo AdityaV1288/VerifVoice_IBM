@@ -1,0 +1,4 @@
+# Test dependencies (all pure Python, so they install on s390x too)
+pytest>=7.4
+redis>=4.5
+fakeredis>=2.20

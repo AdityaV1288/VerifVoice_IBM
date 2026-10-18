@@ -7,7 +7,7 @@ Run:  python demo.py
 """
 
 import pipeline
-import risk_engine
+import risk_adapter
 
 
 def run_scenario(path: str, title: str, amount: float, new_beneficiary: bool) -> None:
@@ -24,7 +24,7 @@ def run_scenario(path: str, title: str, amount: float, new_beneficiary: bool) ->
     print(f"  spoof_score     : {result['spoof_score']}   ({result['spoof_classification']})")
     print(f"  reason_codes    : {result['reason_codes']}")
 
-    decision = risk_engine.decide(
+    decision = risk_adapter.decide(
         coercion_score=result["coercion_score"],
         spoof_score=result["spoof_score"],
         new_beneficiary=new_beneficiary,
