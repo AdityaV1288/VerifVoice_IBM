@@ -44,10 +44,13 @@ def analyze_call(source: str, input_type: str = "text", lang: str = "en") -> dic
         "model_name": None,
         "spoof_reasons": [],
         "spoof_warnings": [],
+        # --- demo-only echo (never persisted, never in the token) ---
+        "transcript": None,
     }
 
     # 1) Resolve the transcript text (transcribe if audio).
     text = semantic_model.transcribe(source) if input_type == "audio" else source
+    result["transcript"] = text
 
     # 2) Run the two coercion signals on the text.
     if text:

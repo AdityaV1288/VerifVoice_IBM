@@ -63,6 +63,8 @@ class AnalyzeResponse(BaseModel):
     spoof_classification: str | None = None
     quality_score: float | None = None
     model_name: str | None = None
+    # --- demo-only echo (opt-in, never persisted, never in the token) ---
+    transcript: str | None = None
 
 
 class PaymentDecisionRequest(BaseModel):
@@ -140,8 +142,14 @@ def health():
     }
 
 
-def _run_analyze(source: str, input_type: str, lang: str) -> AnalyzeResponse:
-    """Shared core: run the pipeline, store a token, return the response."""
+def _run_analyze(source: str, input_type: str, lang: str, echo_transcript: bool = False) -> AnalyzeResponse:
+    """Shared core: run the pipeline, store a token, return the response.
+
+    ``echo_transcript`` is a demo-only toggle: when True the response carries the
+    recognised/typed text so the frontend can show a "heard" panel. The text is
+    never written to disk and never stored in the token — the token keeps only
+    scores + reason codes.
+    """
     t0 = time.perf_counter()
     result = pipeline.analyze_call(source, input_type=input_type, lang=lang)
 
@@ -172,23 +180,33 @@ def _run_analyze(source: str, input_type: str, lang: str) -> AnalyzeResponse:
         spoof_classification=result["spoof_classification"],
         quality_score=result["quality_score"],
         model_name=result["model_name"],
+        transcript=result.get("transcript") if echo_transcript else None,
     )
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-def analyze(req: AnalyzeRequest):
-    """Accept a sample (text or an audio path) and return coercion + spoof signals."""
-    return _run_analyze(req.source, req.input_type, req.lang)
+def analyze(req: AnalyzeRequest, echo_transcript: bool = False):
+    """Accept a sample (text or an audio path) and return coercion + spoof signals.
+
+    ``echo_transcript=true`` (demo-only) also returns the recognised/typed text.
+    """
+    return _run_analyze(req.source, req.input_type, req.lang, echo_transcript=echo_transcript)
 
 
 @app.post("/analyze/upload", response_model=AnalyzeResponse)
-async def analyze_upload(file: UploadFile = File(...), lang: str = "en"):
-    """Accept an uploaded audio file (multipart) — for P5's frontend."""
+async def analyze_upload(file: UploadFile = File(...), lang: str = "en", echo_transcript: bool = False):
+    """Accept an uploaded audio file (multipart) — for P5's live-voice frontend.
+
+    The browser sends a 16 kHz mono WAV blob. ``echo_transcript=true`` (demo-only)
+    also returns the ASR transcript so the UI can show a "heard" panel.
+    """
     suffix = Path(file.filename or "call.wav").suffix or ".wav"
+    if suffix.lower() not in (".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus"):
+        suffix = ".wav"
     with TemporaryDirectory() as directory:
         path = Path(directory) / f"call{suffix}"
         path.write_bytes(await file.read())
-        return _run_analyze(str(path), input_type="audio", lang=lang)
+        return _run_analyze(str(path), input_type="audio", lang=lang, echo_transcript=echo_transcript)
 
 
 @app.post("/payment/decision", response_model=PaymentDecisionResponse)
